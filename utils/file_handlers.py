@@ -22,6 +22,14 @@ class OutputHandler:
             with output_path.open('w', encoding='utf-8') as f:
                 f.write("WEBVTT\n\n")
                 for i, chunk in enumerate(chunks, start=1):
+                    # MODIFICATION: Check for missing timestamps to prevent crashes.
+                    # This can happen if the audio cuts off abruptly.
+                    if chunk.get('timestamp') is None or chunk['timestamp'][1] is None:
+                        logger.warning(
+                            f"Skipping chunk with missing timestamp: \"{chunk.get('text', '').strip()}\""
+                        )
+                        continue
+
                     start_time = OutputHandler._format_timestamp(chunk['timestamp'][0])
                     end_time = OutputHandler._format_timestamp(chunk['timestamp'][1])
                     f.write(f"{i}\n")
@@ -55,7 +63,7 @@ class OutputHandler:
     @staticmethod
     def _format_timestamp(seconds: float) -> str:
         """
-        Format timestamp in HH:MM:SS format.
+        Format timestamp in HH:MM:SS.ms format.
 
         Args:
             seconds: Time in seconds
@@ -63,11 +71,18 @@ class OutputHandler:
         Returns:
             Formatted timestamp string
         """
-        hours = int(seconds // 3600)
-        minutes = int((seconds % 3600) // 60)
-        seconds = int(seconds % 60)
-        milliseconds = int((seconds % 1) * 1000)
-        return f"{hours:02d}:{minutes:02d}:{seconds:02d}.{milliseconds:03d}"
+        # MODIFICATION: Handle cases where seconds might be None, although the primary check is in write_vtt.
+        if seconds is None:
+            return "00:00:00.000"
+            
+        whole_seconds = int(seconds)
+        milliseconds = int((seconds - whole_seconds) * 1000)
+        
+        hours = whole_seconds // 3600
+        minutes = (whole_seconds % 3600) // 60
+        secs = whole_seconds % 60
+        
+        return f"{hours:02d}:{minutes:02d}:{secs:02d}.{milliseconds:03d}"
 
     @staticmethod
     def get_output_paths(
@@ -115,7 +130,11 @@ def save_results(
     vtt_path, text_path = OutputHandler.get_output_paths(input_path, output_path)
 
     # Save VTT format with timestamps
-    OutputHandler.write_vtt(result['chunks'], vtt_path)
+    if 'chunks' in result and result['chunks'] is not None:
+        OutputHandler.write_vtt(result['chunks'], vtt_path)
+    else:
+        logger.warning("No 'chunks' found in result, skipping VTT file creation.")
+
 
     # Save plain text format
     OutputHandler.write_text(result['text'], text_path)
