@@ -15,12 +15,13 @@ def parse_arguments() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Audio processing with Whisper model")
     parser.add_argument("--device", choices=["cpu", "cuda", "mps", "auto"],
                         default="auto", help="Device to use for processing")
-    # MODIFICATION: Changed default to None and updated help text.
-    # If not provided, language will be auto-detected by Whisper.
     parser.add_argument("--language", default=None,
                         help="Language of the audio. Omit for auto-detection and multi-language support.")
     parser.add_argument("--model", default=CONFIG['processing'].default_model,
                         help="Model name or path")
+    # MODIFICATION: Added --prompt argument
+    parser.add_argument("--prompt", type=str, default=None,
+                        help="Initial prompt to guide the model's transcription.")
     parser.add_argument("--input", required=True, type=Path,
                         help="Input audio file path")
     parser.add_argument("--task", choices=["transcribe", "translate"],
@@ -45,8 +46,7 @@ def main() -> None:
         input_file = AudioConverter.ensure_compatible_audio(args.input)
         logger.info(f"Processing file: {input_file}")
         
-        # MODIFICATION: Conditionally build generate_kwargs
-        # This allows Whisper's auto-detection to work when no language is specified.
+        # Conditionally build generate_kwargs
         generate_kwargs = {
             "task": args.task
         }
@@ -55,12 +55,19 @@ def main() -> None:
             generate_kwargs["language"] = args.language
         else:
             logger.info("No language specified. Using auto-detection.")
+        
+        # MODIFICATION: Add prompt to generate_kwargs if provided
+        if args.prompt:
+            logger.info(f"Using initial prompt: {args.prompt}")
+            generate_kwargs["prompt"] = args.prompt
 
 
         # Process audio and generate output
+        # MODIFICATION: Changed return_timestamps to 'word' for higher accuracy
+        logger.info("Processing with word-level timestamps for improved accuracy.")
         result = resources.pipeline(
             str(input_file),
-            return_timestamps=True,
+            return_timestamps='word',
             generate_kwargs=generate_kwargs
         )
 
